@@ -2,7 +2,7 @@
 /*
 Plugin Name: Shortcode Twitch
 Description: Shortcode Twitch
-Version: 1.1
+Version: 1.2
 Author: F.Schumacher
 Author URI: http://www.google.com/
 License: GPL v2
@@ -23,7 +23,7 @@ License: GPL v2
 */
 
 define('SHORTCODE_TWITCH_BASE', plugin_dir_path(__FILE__));
-define('SHORTCODE_TWITCH_VER', '1.1');
+define('SHORTCODE_TWITCH_VER', '1.2');
 define('SHORTCODE_TWITCH_URL', plugins_url('/' . basename(dirname(__FILE__))));
 
 
@@ -47,7 +47,7 @@ function shortcode_twitch_callback($attrs, $content=null) {
 			id="shoco-twitch-channel-<?php echo $attrs["channel"] ?>"
 			data-channel="<?php echo $attrs["channel"] ?>"
 			style="display:none">
-		<h4><span class="shoco-twitch-display-name"></span></h4>
+		<h3><i class="shoco-twitch-channel-online shoco-twitch-channel-online-icon"></i><span class="shoco-twitch-display-name"></span></h3>
 		
 		<div class="shoco-twitch-channel-logo"><img src="<?php echo SHORTCODE_TWITCH_URL .'/css/logo-default.png' ?>"/></div>
 		<div class="shoco-twitch-details">
@@ -67,8 +67,6 @@ function shortcode_twitch_callback($attrs, $content=null) {
 add_shortcode("twitch", "shortcode_twitch_callback");
 
 
-
-
 /**
  * Declares Javascript variables and custom fonts
  * Called by wp_head action
@@ -79,129 +77,10 @@ function shortcode_twitch_js_vars()
 	?>
 	<script type="text/javascript">
 		var shocoTwitch = {
-			'ajaxurl': "<?php echo admin_url('admin-ajax.php') ?>"
+			'cacheurl': "<?php echo SHORTCODE_TWITCH_URL."/cache/"?>", 
+			'ajaxurl': "<?php echo SHORTCODE_TWITCH_URL."/shortcode-twitch-ajax.php"?>"
 		};
 	</script>
     <?php
 }
 add_action('wp_head','shortcode_twitch_js_vars');
-
-
-class TwitchAPI {
-	var $context = null;
-	var $baseURL = "https://api.twitch.tv/kraken";
-
-	function __construct() {
-		$this->context = stream_context_create(array(
-			"http" => array(
-				"method" => "GET",
-				"header" => "Accept: application/vnd.twitchtv.v3+json\r\n"
-			)
-		));
-	}
-
-	function cacheFile($context, $id) {
-		return SHORTCODE_TWITCH_BASE . "cache/{$context}.{$id}.json";
-	}
-
-	function cacheExpired($cacheFile, $cacheTTL=0) {
-		if (!$cacheTTL) $cacheTTL = 60 * 60 * 24; // a day
-		$age = time() - @filemtime($cacheFile);
-		return $age >= $cacheTTL;
-	}
-
-	function request($type, $userName, $cacheTTL=0) {
-		$cacheFile = $this->cacheFile($type, $userName);
-		if ($this->cacheExpired($cacheFile, $cacheTTL)) {
-			$data = @file_get_contents("{$this->baseURL}/{$type}/{$userName}",
-					false, $this->context);
-			
-			if (!empty($data))
-				@file_put_contents($cacheFile, $data);
-
-			return @json_decode($data, true);
-		}
-		return @json_decode(@file_get_contents($cacheFile), true);
-	}
-}
-
-
-function shortcode_twitch_get_channel_data_ajax() {
-	// Fetch stream and channel information from Twitch
-	header('Content-type: application/json; charset=utf-8');
-
-	$channels = $_POST["channels"];
-	$api = new TwitchAPI();
-	$jsonData = array();
-
-	foreach ($channels as $channel) {
-		$now = time();
-		$requestData = $api->request("channels", $channel);
-		if (empty($requestData) || !empty($requestData["error"])) {
-			$jsonData[$channel] = "error";
-		}
-		else {
-			$jsonData[$channel] = $requestData;
-		}
-	}
-	echo json_encode($jsonData);
-	unset($api);
-	die();
-}
-
-
-function shortcode_twitch_get_user_data_ajax() {
-	// Fetch stream and channel information from Twitch
-	header('Content-type: application/json; charset=utf-8');
-
-	$channels = $_POST["channels"];
-	$api = new TwitchAPI();
-	$jsonData = array();
-
-	foreach ($channels as $channel) {
-		$now = time();
-		$requestData = $api->request("users", $channel);
-		if (empty($requestData) || !empty($requestData["error"])) {
-			$jsonData[$channel] = "error";
-		}
-		else {
-			$jsonData[$channel] = $requestData;
-		}
-	}
-	echo json_encode($jsonData);
-	unset($api);
-	die();
-}
-
-
-function shortcode_twitch_get_stream_data_ajax() {
-	// Fetch stream and channel information from Twitch
-	header('Content-type: application/json; charset=utf-8');
-
-	$channels = $_POST["channels"];
-	$api = new TwitchAPI();
-	$jsonData = array();
-
-	foreach ($channels as $channel) {
-		$now = time();
-		$requestData = $api->request("streams", $channel, 30);
-		if (empty($requestData) || !empty($requestData["error"])) {
-			$jsonData[$channel] = "error";
-		}
-		else {
-			$jsonData[$channel] = $requestData["stream"];
-		}
-	}
-	echo json_encode($jsonData);
-	unset($api);
-	die();
-}
-
-add_action( 'wp_ajax_get_twitch_channel_data', 'shortcode_twitch_get_channel_data_ajax' );
-add_action( 'wp_ajax_nopriv_get_twitch_channel_data', 'shortcode_twitch_get_channel_data_ajax' );
-
-add_action( 'wp_ajax_get_twitch_user_data', 'shortcode_twitch_get_user_data_ajax' );
-add_action( 'wp_ajax_nopriv_get_twitch_user_data', 'shortcode_twitch_get_user_data_ajax' );
-
-add_action( 'wp_ajax_get_twitch_stream_data', 'shortcode_twitch_get_stream_data_ajax' );
-add_action( 'wp_ajax_nopriv_get_twitch_stream_data', 'shortcode_twitch_get_stream_data_ajax' );
