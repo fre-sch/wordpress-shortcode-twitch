@@ -1,0 +1,32 @@
+.shoco-twitch-channel {
+	position: relative;
+	margin-bottom: 1em;
+}
+.shoco-twitch-channel > :last-child:after {
+	content:" ";
+	display:block;
+	clear:both;
+}
+.shoco-twitch-channel-logo img {
+	width: 80px;
+}
+.shoco-twitch-channel-logo {
+	float: left;
+	margin-right: 15px;
+}
+.shoco-twitch-details {
+	margin-left: 100px;
+}
+
+.shoco-twitch-user-bio {
+	margin-bottom: 1em;
+}
+
+i.shoco-twitch-channel-online-icon {
+	display: inline-block;
+	width: 35px;
+	height: 19px;
+	background-image: url("online.gif");
+	background-repeat: no-repeat;
+	vertical-align: bottom;
+}
