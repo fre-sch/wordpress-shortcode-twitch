@@ -1,4 +1,19 @@
 var shocoTwitchData = {};
+var USER_TTL = 1000 * 60 * 10
+var CHANNEL_TTL =  1000 * 60 * 10;
+var STREAM_TTL = 1000 * 30;
+
+if (!Storage.prototype.setObject) {
+	Storage.prototype.setObject = function(key, value) {
+		this.setItem(key, JSON.stringify(value));
+	};
+}
+if (!Storage.prototype.getObject) {
+	Storage.prototype.getObject = function(key) {
+		var value = this.getItem(key);
+		return value && JSON.parse(value);
+	}
+}
 
 jQuery(document).ready(function() {
 
@@ -12,89 +27,95 @@ jQuery(document).ready(function() {
 		};
 	})
 
-	shocoTwitchUpdate(); // Update Twitch status buttons
-	setInterval(shocoTwitchUpdate, 1000 * 60 * 60);
+	shocoUpdateUsers();
+	setInterval(shocoUpdateUsers, USER_TTL);
 
-	shocoTwitchStreamRefresh();
-	setInterval(shocoTwitchStreamRefresh, 1000 * 30);
+	shocoUpdateChannels();
+	setInterval(shocoUpdateChannels, CHANNEL_TTL);
+
+	shocoUpdateStreams();
+	setInterval(shocoUpdateStreams, STREAM_TTL);
 });
 
 
-
-function shocoTwitchUpdate()
-{	
-	var channels = [];
-	jQuery(".shoco-twitch-channel").each(function () {
-		var channel = jQuery(this).data("channel");
-		channels.push(channel);
-
-		jQuery.get(shocoTwitch.cacheurl + "/users." + channel + ".json", function(response) {
-			shocoTwitchData[channel].user = response || "error";
-			shocoTwitchRefreshWidget(channel)
-		});
-
-		if (shocoTwitchData[channel].user === "error") {
-			jQuery.post(shocoTwitch.ajaxurl, {
-				'action': 'get_twitch_user_data',
-				'channels': [channel]
-			}, function(response, status) {
-				if (status !== 'success')
-					return;
-				jQuery.each(response, function(channelName, data) {
-					shocoTwitchData[channelName].user = data;
-					shocoTwitchRefreshWidget(channelName)
-				});
-			});
-		}
-
-		jQuery.get(shocoTwitch.cacheurl + "/channels." + channel + ".json", function(response) {
-			shocoTwitchData[channel].channel = response || "error";
-		});
-
-		if (shocoTwitchData[channel].channel === "error") {
-			jQuery.post(shocoTwitch.ajaxurl, {
-				'action': 'get_twitch_channel_data',
-				'channels': [channel]
-			}, function(response, status) {
-				if (status !== 'success')
-					return;
-				jQuery.each(response, function(channelName, data) {
-					shocoTwitchData[channelName].channel = data;
-					shocoTwitchRefreshWidget(channelName)
-				});
+function shocoUpdateUsers() {
+	jQuery.each(shocoTwitchData, function(channelName, channelData) {
+		channelData.user = localStorage.getObject(channelName + ".user");
+		var age = channelData.user && channelData.user.timestamp ? Date.now() - channelData.user.timestamp : USER_TTL + 1;
+		if (!channelData.user || age > USER_TTL) {
+			console.info("refreshing localstorage user data");
+			jQuery.ajax({
+				url: "https://api.twitch.tv/kraken/users/"+channelName,
+				accepts: "application/vnd.twitchtv.v3+json",
+				dataType: 'jsonp',
+				success: function(response, status) {
+					if (status !== 'success')
+						return;
+					channelData.user = response;
+					channelData.user.timestamp = Date.now();
+					localStorage.setObject(channelName + ".user", channelData.user);
+				}
+			}).always(function () {
+				shocoTwitchRefreshWidget(channelName, channelData);
 			});
 		}
 	});
 }
 
-function shocoTwitchStreamRefresh() {
-	var channels = [];
-	jQuery(".shoco-twitch-channel").each(function () {
-		channels.push(jQuery(this).data("channel"));
+
+function shocoUpdateChannels() {
+	jQuery.each(shocoTwitchData, function(channelName, channelData) {
+		channelData.channel = localStorage.getObject(channelName + ".channel");
+		var age = channelData.channel && channelData.channel.timestamp ? Date.now() - channelData.channel.timestamp : USER_TTL + 1;
+		if (!channelData.channel || age > CHANNEL_TTL) {
+			console.info("refreshing localstorage channel data");
+			jQuery.ajax({
+				url: "https://api.twitch.tv/kraken/channels/"+channelName,
+				accepts: "application/vnd.twitchtv.v3+json",
+				dataType: 'jsonp',
+				success: function(response, status) {
+					if (status !== 'success')
+						return;
+					channelData.channel = response;
+					channelData.channel.timestamp = Date.now();
+					localStorage.setObject(channelName + ".channel", channelData.channel);
+				}
+			}).always(function () {
+				shocoTwitchRefreshWidget(channelName, channelData);
+			});
+		}
 	});
-	jQuery.each(channels, function(i, channel) {
+}
+
+
+function shocoUpdateStreams() {
+	jQuery.each(shocoTwitchData, function(channelName, channelData) {
 		jQuery.ajax({
-			url: "https://api.twitch.tv/kraken/streams/"+channel,
+			url: "https://api.twitch.tv/kraken/streams/"+channelName,
 			accepts: "application/vnd.twitchtv.v3+json",
 			dataType: 'jsonp',
 			success: function(response, status) {
 				if (status !== 'success')
 					return;
-				shocoTwitchData[channel].stream = response.stream;
-				shocoTwitchData[channel].status = (response.stream
-						? 'online' : 'offline'); 
-				shocoTwitchRefreshWidget(channel);
+				channelData.stream = response.stream;
+				channelData.status = response.stream ? 'online' : 'offline';
+				if (response.stream && response.stream.channel)  {
+					channelData.channel.game = response.stream.channel.game;
+					channelData.channel.game = response.stream.channel.game;
+					channelData.channel.timestamp = Date.now();
+					localStorage.setObject(channelName + ".channel", channelData.channel);
+				}
 			}
+		}).always(function () {
+			shocoTwitchRefreshWidget(channelName, channelData);
 		});
 	});
 }
 
 
-function shocoTwitchRefreshWidget(channel) {
-
+function shocoTwitchRefreshWidget(channel, data) {
 
 	var sel = '#shoco-twitch-channel-' + channel;
-	var data = shocoTwitchData[channel];
 
 	jQuery(sel).show();
 
